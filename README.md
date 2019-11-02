@@ -5,6 +5,8 @@ This control can be used to provide autocomplete functionality for CRM metadata 
 
 ### Usage
 
+![alt text](https://github.com/sabrish/XrmPowerControls.XrmMetadataAutoComplete/blob/master/XrmPowerControls.XrmMetadataAutoComplete.gif?raw=true)
+
 Parameters used in the control are:
 * **AutoCompleteMetaDataType**: This is of type Enum. The suppored values are
   * _Entity_
