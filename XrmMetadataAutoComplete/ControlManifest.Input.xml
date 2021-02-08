@@ -1,8 +1,8 @@
-<?xml version="1.0" encoding="utf-8" ?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <manifest>
-  <control namespace="SAB.XrmPowerControls" constructor="XrmMetadataAutoComplete" version="0.0.1" display-name-key="XrmMetadataAutoComplete" description-key="XrmMetadataAutoComplete description" control-type="standard">
+  <control namespace="SAB.XrmPowerControls" constructor="XrmMetadataAutoComplete" version="0.0.2" display-name-key="XrmMetadataAutoComplete" description-key="XrmMetadataAutoComplete description" control-type="standard">
     <!-- property node identifies a specific, configurable piece of data that the control expects from CDS -->
-   <property name="selectedValue" display-name-key="Selected Vaue" description-key="Selected field Value" of-type="SingleLine.Text" usage="bound" required="true" />
+    <property name="selectedValue" display-name-key="Selected Vaue" description-key="Selected field Value" of-type="SingleLine.Text" usage="bound" required="true" />
     <property name="autoCompleteMetaDataType" display-name-key="AutoCompleteMetaDataType" description-key="AutoComplete MetaData Type" of-type="Enum" usage="input" required="true">
       <value name="Entity" display-name-key="Entity" description-key="Entity">Entity</value>
       <value name="Attributes" display-name-key="Attributes" description-key="Attributes" default="true">Attributes</value>
@@ -23,7 +23,7 @@
       <property name="sampleProperty" display-name-key="Property_Display_Key" description-key="Property_Desc_Key" of-type-group="numbers" usage="bound" required="true" />
     -->
     <resources>
-      <code path="index.ts" order="1"/>
+      <code path="index.ts" order="1" />
       <!-- UNCOMMENT TO ADD MORE RESOURCES
       <css path="css/XrmMetadataAutoComplete.css" order="1" />
       <resx path="strings/XrmMetadataAutoComplete.1033.resx" version="1.0.0" />
