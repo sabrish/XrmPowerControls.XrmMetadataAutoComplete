@@ -132,6 +132,8 @@ private _menuButtonElement = React.createRef<HTMLDivElement>();
     );
   }
   private renderSuggestionList = () => {
+    if(this.state.searchText != undefined)
+    {
       return (
         <FocusZone direction={FocusZoneDirection.vertical}>
           <List id='SearchList' tabIndex={0}
@@ -140,6 +142,7 @@ private _menuButtonElement = React.createRef<HTMLDivElement>();
           />
         </FocusZone>
       );
+    }
   }
   private onRenderCell = (item: any) => {
     if (item.key !== -1) {
@@ -171,6 +174,7 @@ private _menuButtonElement = React.createRef<HTMLDivElement>();
     this.setState({ isSuggestionDisabled: false });
   }
   private suggestedTagsFiltered = (list: ISuggestionItem[]) => {
+    console.log("searchtext-"+this.state.searchText);
     let suggestedTags = list.filter(tag => this.state.searchText.toLowerCase() == "" ||
       tag.searchValue.toLowerCase().includes(this.state.searchText.toLowerCase()));
     suggestedTags = suggestedTags.sort((a, b) => a.searchValue.localeCompare(b.searchValue));
