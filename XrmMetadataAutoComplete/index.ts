@@ -1,16 +1,9 @@
 import * as React from "react";
 import * as ReactDOM from "react-dom";
-import {ComboBoxExample, IComboOptions } from "./ReactComboBox";
 import { ITag } from 'office-ui-fabric-react/lib/Pickers';
 import {IInputs, IOutputs} from "./generated/ManifestTypes";
 import { ReactSearchBoxV2, IProps } from './Components/ReactSearchBox';
 import { ISuggestionItem } from './Components/Autocomplete';
-
-
-interface Items {
-	key: string;
-	text: string;
-  }
 
 
 export class XrmMetadataAutoComplete implements ComponentFramework.StandardControl<IInputs, IOutputs> {
@@ -96,9 +89,6 @@ export class XrmMetadataAutoComplete implements ComponentFramework.StandardContr
 
 	}
 
-	
-
-	
 
 
 	/**
