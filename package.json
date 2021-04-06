@@ -10,9 +10,12 @@
   },
   "dependencies": {
     "@types/node": "^10.12.18",
-    "@types/powerapps-component-framework": "^1.2.0"
+    "@types/powerapps-component-framework": "^1.2.0",
+    "office-ui-fabric": "^2.6.3",
+    "office-ui-fabric-react": "^7.165.1"
   },
   "devDependencies": {
+    "eslint-plugin-react-hooks": "^4.2.0",
     "pcf-scripts": "^1",
     "pcf-start": "^1"
   }

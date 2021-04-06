@@ -1,20 +1,39 @@
+import * as React from "react";
+import * as ReactDOM from "react-dom";
+import {ComboBoxExample, IComboOptions } from "./ReactComboBox";
+import { ITag } from 'office-ui-fabric-react/lib/Pickers';
 import {IInputs, IOutputs} from "./generated/ManifestTypes";
+import { ReactSearchBoxV2, IProps } from './Components/ReactSearchBox';
+import { ISuggestionItem } from './Components/Autocomplete';
+
+
+interface Items {
+	key: string;
+	text: string;
+  }
+
 
 export class XrmMetadataAutoComplete implements ComponentFramework.StandardControl<IInputs, IOutputs> {
 
+	entity:string="";
+	private firstRun:Boolean =true;
+	/**
+     * Selected items cache.
+     */
+	 public selectedItems: ITag[];
+
+	
 	//private _labelElement : HTMLLabelElement;
 	private _divContainer : HTMLDivElement;
-
-	// input element that is used to create the autocomplete
-	private _inputElement : HTMLInputElement;
-
-	//Datalist element
-	private _datalistElement : HTMLDataListElement;
 
 	// Reference to ComponentFramework Context object
 	private _context: ComponentFramework.Context<IInputs>;
 
 	private _currentValue : string;
+
+	private _json:string|null;
+	private _noSuggestions: string = "No data";
+	private _searchTitle ="---";
 
 	 // PCF framework delegate which will be assigned to this object which would be called whenever any update happens. 
 	private _notifyOutputChanged: () => void;
@@ -22,7 +41,9 @@ export class XrmMetadataAutoComplete implements ComponentFramework.StandardContr
 	// Event Handler 'refreshData' reference
 	private _refreshData: EventListenerOrEventListenerObject;
 
-	private _autoCompleteValues: string[] = [];
+	private _autoCompleteValues: ISuggestionItem[];
+
+	private props:IProps = { value:"", json:[], onResult: this.notifyChange.bind(this),  noSuggestionMessage:this._noSuggestions, searchTitle: this._searchTitle };
 
 	/**
 	 * Empty constructor.
@@ -48,26 +69,8 @@ export class XrmMetadataAutoComplete implements ComponentFramework.StandardContr
 		this._context = context;
 		this._divContainer = document.createElement("div");
 		this._notifyOutputChanged = notifyOutputChanged;
-		this._refreshData = this.refreshData.bind(this);
-		
-		var autoCompleteListUniqueId = this.uuidv4();
-
-		// creating HTML elements for the input type list and binding it to the function which refreshes the control data
-		this._inputElement = document.createElement("input");
-		this._inputElement.setAttribute("list", "dataList" + autoCompleteListUniqueId);
-        this._inputElement.setAttribute("name", "autoComplete");
-		this._inputElement.addEventListener("input", this._refreshData);
-		this._inputElement.setAttribute("value", this._context.parameters.selectedValue === undefined  || this._context.parameters.selectedValue.raw === null ? "" :  String(this._context.parameters.selectedValue.raw));
-        
-        // creating HTML elements for data list 
-        this._datalistElement = document.createElement("datalist");
-		this._datalistElement.setAttribute("id", "dataList" + autoCompleteListUniqueId);
-
-		//Create options for data list
-        var optionsHtml = "";
-        var optionsHtmlArray = new Array();
-       
 		var metadataType = this._context.parameters.autoCompleteMetaDataType.raw;
+		this.props.value = this._context.parameters.selectedValue.raw || "";
 		var relatedEntityName =  this._context.parameters.relatedEntity === undefined ? null : this._context.parameters.relatedEntity.raw;
 
 		var filterEntityFieldByEntitiesAssociatedTo = this._context.parameters.filterEntityFieldByEntitiesAssociatedTo === undefined ? null : this._context.parameters.filterEntityFieldByEntitiesAssociatedTo.raw;
@@ -76,138 +79,26 @@ export class XrmMetadataAutoComplete implements ComponentFramework.StandardContr
 
 		var namefield = "LogicalName";
 		var idField = "MetadataId";
-
-		switch(metadataType){
-			case "Entity":{
-				if (filterEntityFieldByEntitiesAssociatedTo == undefined || filterEntityFieldByEntitiesAssociatedTo == null)
-				{
-					webApiUrl = this.GetEntitiesUrl();
-					namefield = "LogicalName";
-					idField = "MetadataId";
-				}
-				else{
-					webApiUrl = this.GetOneToManyRelationshipMetadataWithParamsUrl(String(filterEntityFieldByEntitiesAssociatedTo), "$select=ReferencingEntity,MetadataId");
-					namefield = "ReferencingEntity";
-					idField = "MetadataId";
-				}
-				break;
-			}
-			case "Attributes":{
-				if (relatedEntityName != null){
-					webApiUrl = this.GetAttributesforEntityUrl(relatedEntityName);
-					namefield = "LogicalName";
-					idField = "MetadataId";
-				}
-				else{
-					this._divContainer.innerHTML = "Please provide the field which records the entity name or enter the entity name in the RelatedEntity property";
-				}
-				break;
-			}
-			case "Lookup":{
-				if (relatedEntityName != null){
-					webApiUrl = this.GetCustomerOrLookupAttributesforEntityUrl(relatedEntityName);
-					namefield = "LogicalName";
-					idField = "MetadataId";
-				}
-				else{
-					this._divContainer.innerHTML = "Please provide the field which records the entity name or enter the entity name in the RelatedEntity property";
-				}
-				break;
-			}
-			case "SystemViews":{
-				if (relatedEntityName != null){
-					webApiUrl = this.GetSavedViewsForEntityUrl(relatedEntityName);
-					namefield = "name";
-					idField = "savedqueryid";
-				}
-				else{
-					this._divContainer.innerHTML = "Please provide the field which records the entity name or enter the entity name in the RelatedEntity property";
-				}
-				break;
-			}
-			default:{
-				this._divContainer.innerHTML = "Undefined metadatatype";
-				break;
-			}
-
+       
+		if(metadataType == "Entity" && this.firstRun)
+		{
+			this.firstRun == false;
+			this.PopulateDropDown(metadataType,filterEntityFieldByEntitiesAssociatedTo,webApiUrl,namefield,idField,relatedEntityName);
 		}
-
-		//@ts-ignore
-		const serverUrl = Xrm.Page.context.getClientUrl();
-		let req = new XMLHttpRequest();
-		req.open("GET", serverUrl + webApiUrl, true);
-		req.setRequestHeader("Accept", "application/json");
-		req.setRequestHeader("Content-Type", "application/json; charset=utf-8");
-		req.setRequestHeader("OData-MaxVersion", "4.0");
-		req.setRequestHeader("OData-Version", "4.0");
-		req.onreadystatechange = () => {
-			if (req.readyState == 4 /* complete */) {
-				req.onreadystatechange = null; /* avoid potential memory leak issues.*/
-
-				if (req.status == 200) {
-					var data = JSON.parse(req.response);
-
-					var results: Array<string>;
-					results = new Array();
-					var dataJson = data.value;
-
-					if (metadataType === "Lookup"){
-						dataJson = data.Attributes;
-					}
-
-					if (dataJson != null && dataJson.length > 0) {
-						for (let i = 0; i < dataJson.length; i++) {
-							
-							if (metadataType  !== "SystemViews"){
-							if (!this.ExistsinArray(results, dataJson[i][namefield])){
-								results.push(dataJson[i][namefield]);
-							}
-							}
-							else{
-								results.push(dataJson[i][namefield] + "-CRMID-" + dataJson[i][idField]);	
-							}
-							
-						}
-					}
-
-					this._autoCompleteValues = results.sort();
-						
-					for (var i = 0; i < this._autoCompleteValues.length; ++i) {
-						optionsHtmlArray.push('<option value="');
-						optionsHtmlArray.push(this._autoCompleteValues[i].toString());
-						optionsHtmlArray.push('" />');
-					}
-					optionsHtml = optionsHtmlArray.join("");
-
-				//@ts-ignore 
-				this._datalistElement.innerHTML = optionsHtml;					
-
-				} else {
-					var error = JSON.parse(req.response).error;
-					console.log(error.message);
-				}
-			}
-		};
-		req.send();
-                        
-        // appending the HTML elements to the control's HTML container element.
-        //Add input element
-        this._divContainer.appendChild(this._inputElement);
-
-        //Add datalist element
-        this._divContainer.appendChild(this._datalistElement);
+		
 		container.appendChild(this._divContainer);
 	}
 
-	/**
-	 * Updates the values to the internal value variable we are storing and also updates the html label that displays the value
-	 * @param evt : The "Input Properties" containing the parameters, control metadata and interface functions
-	 */
-	public refreshData(evt: Event): void {
-		this._currentValue = (this._inputElement.value as any) as string;
+	notifyChange(value:string)
+	{
+		this._currentValue = value;
 		this._notifyOutputChanged();
+
 	}
 
+	
+
+	
 
 
 	/**
@@ -216,7 +107,22 @@ export class XrmMetadataAutoComplete implements ComponentFramework.StandardContr
 	 */
 	public updateView(context: ComponentFramework.Context<IInputs>): void
 	{
-		// Add code to update control view
+		var metadataType = this._context.parameters.autoCompleteMetaDataType.raw;
+		this.props.value = this._context.parameters.selectedValue.raw || "";
+		var relatedEntityName =  this._context.parameters.relatedEntity === undefined ? null : this._context.parameters.relatedEntity.raw;
+
+		var filterEntityFieldByEntitiesAssociatedTo = this._context.parameters.filterEntityFieldByEntitiesAssociatedTo === undefined ? null : this._context.parameters.filterEntityFieldByEntitiesAssociatedTo.raw;
+
+		var webApiUrl = "/api/data/v9.0/EntityDefinitions";
+
+		var namefield = "LogicalName";
+		var idField = "MetadataId";
+		if(metadataType != "Entity" && relatedEntityName != this.entity && relatedEntityName!=null)
+		{
+			this.entity = relatedEntityName;
+			ReactDOM.unmountComponentAtNode(this._divContainer);
+			this.PopulateDropDown(metadataType,filterEntityFieldByEntitiesAssociatedTo,webApiUrl,namefield,idField,relatedEntityName);
+		}
 	}
 
 	/** 
@@ -239,7 +145,7 @@ export class XrmMetadataAutoComplete implements ComponentFramework.StandardContr
 	public destroy(): void
 	{
 		// Add code to cleanup control if necessary
-		this._inputElement.removeEventListener("input", this._refreshData);
+		ReactDOM.unmountComponentAtNode(this._divContainer);
 	}
 
 	/** 
@@ -263,6 +169,146 @@ export class XrmMetadataAutoComplete implements ComponentFramework.StandardContr
 		}
 		return false;
 	}
+
+	private async PopulateDropDown(metadataType:string,filterEntityFieldByEntitiesAssociatedTo:any,webApiUrl:string,namefield:string,idField:string,relatedEntityName:any)
+	{
+		switch(metadataType){
+			case "Entity":{
+				if (filterEntityFieldByEntitiesAssociatedTo == undefined || filterEntityFieldByEntitiesAssociatedTo == null)
+				{
+					webApiUrl = this.GetEntitiesUrl();
+					namefield = "LogicalName";
+					idField = "MetadataId";
+				}
+				else{
+					webApiUrl = this.GetOneToManyRelationshipMetadataWithParamsUrl(String(filterEntityFieldByEntitiesAssociatedTo), "$select=ReferencingEntity,MetadataId");
+					namefield = "ReferencingEntity";
+					idField = "MetadataId";
+				}
+
+				
+				break;
+			}
+			case "Attributes":{
+				if (relatedEntityName != null){
+					webApiUrl = this.GetAttributesforEntityUrl(relatedEntityName);
+					namefield = "LogicalName";
+					idField = "MetadataId";
+				}
+				else{
+					this._divContainer.innerHTML = "Please provide the field which records the entity name or enter the entity name in the RelatedEntity property";
+				}
+
+				
+				break;
+			}
+			case "Lookup":{
+				if (relatedEntityName != null){
+					webApiUrl = this.GetCustomerOrLookupAttributesforEntityUrl(relatedEntityName);
+					namefield = "LogicalName";
+					idField = "MetadataId";
+				}
+				else{
+					this._divContainer.innerHTML = "Please provide the field which records the entity name or enter the entity name in the RelatedEntity property";
+				}
+
+				
+				break;
+			}
+			case "SystemViews":{
+				if (relatedEntityName != null){
+					webApiUrl = this.GetSavedViewsForEntityUrl(relatedEntityName);
+					namefield = "name";
+					idField = "savedqueryid";
+				}
+				else{
+					this._divContainer.innerHTML = "Please provide the field which records the entity name or enter the entity name in the RelatedEntity property";
+				}
+				
+				break;
+			}
+			case "BusinessProcessFlows":{
+				if (relatedEntityName != null){
+					webApiUrl = this.GetBusinessProcessFlowsUrl(relatedEntityName);
+					namefield="name";
+					idField="workflowid";
+				}
+				
+				break;
+			}
+			default:{
+				this._divContainer.innerHTML = "Undefined metadatatype";
+				break;
+			}
+
+		}
+
+		//@ts-ignore
+		const serverUrl = Xrm.Page.context.getClientUrl();
+		var apiRequestUrl = serverUrl + webApiUrl;
+		
+		var results: ISuggestionItem[];
+		results = [];
+		var data = await this.getXrmMetaData(apiRequestUrl);
+		var dataJson = data.value;
+		if (metadataType === "Lookup"){
+			dataJson = data.Attributes;
+		}
+
+		if (dataJson != null && dataJson.length > 0) {
+			for (let i = 0; i < dataJson.length; i++) {
+				
+				if (!this.ExistsinArray(results, dataJson[i][namefield])){
+					if (metadataType  == "SystemViews"){
+						results.push({ key: i, displayValue: dataJson[i][namefield] + " (" + dataJson[i][idField]+")",searchValue:dataJson[i][namefield] + "-CRMID-" + dataJson[i][idField] });
+					}
+					else if(metadataType  == "BusinessProcessFlows")
+					{
+						results.push({ key: i, displayValue: dataJson[i][namefield],searchValue:dataJson[i][namefield] });
+					}
+					else
+					{
+						if(dataJson[i]["DisplayName"]["LocalizedLabels"].length>0)
+						{
+							results.push({ key: i, displayValue: dataJson[i]["DisplayName"]["LocalizedLabels"][0]["Label"]+" ("+dataJson[i][namefield]+")",searchValue:dataJson[i][namefield] });
+						}
+						else
+						{
+							results.push({ key: i, displayValue: dataJson[i][namefield],searchValue:dataJson[i][namefield] });
+						}
+					}
+				}
+				
+			}
+		}
+
+		this._autoCompleteValues = results.sort((a, b) => (a.key > b.key) ? 1 : -1);
+		this.props.json = this._autoCompleteValues;
+		let obj = this.props.json.find((o, i) => {
+			if (o.searchValue === this.props.value) {
+				return true; // stop searching
+			}
+		});
+
+		if(!obj)
+		{
+			this.props.value = "";
+		}
+
+		ReactDOM.render(
+			React.createElement(ReactSearchBoxV2,this.props)
+			, this._divContainer
+		);			
+	}
+
+	private async getXrmMetaData(webApiUrl:string):Promise<any> {
+		const response = await fetch(webApiUrl);
+		const body = await response.json();
+  		return body;
+		
+	}
+
+	
 
 	private GetEntitiesUrl() :string
 	{
@@ -289,5 +335,10 @@ export class XrmMetadataAutoComplete implements ComponentFramework.StandardContr
 	private  GetOneToManyRelationshipMetadataWithParamsUrl(entitylogicalname: string, paramstring: string ) :string
 	{
 		return "/api/data/v9.0/EntityDefinitions(LogicalName='" + entitylogicalname + "')/OneToManyRelationships?" + paramstring;
+	}
+
+	private GetBusinessProcessFlowsUrl(entitylogicalname: string): string
+	{
+		return "/api/data/v9.0/workflows?$filter=category eq 4 and primaryentity eq '"+entitylogicalname+"'";
 	}
 }
