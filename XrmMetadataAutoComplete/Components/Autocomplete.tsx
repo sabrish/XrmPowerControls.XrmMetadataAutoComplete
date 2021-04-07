@@ -13,6 +13,7 @@ export interface IAutocompleteProps {
   searchTitle?: string;
   suggestionCallback: (item: ISuggestionItem) => void;
   searchCallback: (item: string) => void;
+  onChangeCallback: (item?: string) => void;
   value:string;
   noSuggestionsMessage:string;
 }
@@ -72,9 +73,7 @@ private _searchContainerRef = React.createRef<HTMLDivElement>();
      
     if(showHide) {
     return (
-     
       <div ref={this._searchContainerRef} style={AutocompleteStyles()} onKeyDown={this.onKeyDown}>
-        <Stack tokens={stackTokens}>
           <SearchBox
             id={'SuggestionSearchBox'}
             placeholder={this.props.searchTitle}
@@ -83,11 +82,11 @@ private _searchContainerRef = React.createRef<HTMLDivElement>();
             onChange={newSearchText => {
               newSearchText && newSearchText.currentTarget.value.trim() !== '' ? this.showSuggestionCallOut() : this.hideSuggestionCallOut();
               this.setState({ searchText: (newSearchText && newSearchText.currentTarget.value) as string });     
+              this.onSearchValueChanged(newSearchText,(newSearchText && newSearchText.currentTarget.value) as string);
             }}
-          onClear={(ev:any)=>this.setState({ value:"", searchText:"", isSuggestionDisabled:true})}
+            onClear={(ev:any)=>{this.setState({ value:"", searchText:"", isSuggestionDisabled:true}); this.onSearchValueChanged(ev,""); }}  
           disableAnimation
           />
-        </Stack>
         {this.renderSuggestions()}         
       </div>
     );
@@ -95,8 +94,6 @@ private _searchContainerRef = React.createRef<HTMLDivElement>();
         else
         return (
           <div ref={this._searchContainerRef} style={AutocompleteStyles()} onKeyDown={this.onKeyDown}>
-            <div ref={this._searchContainerRef}>
-            <Stack tokens={stackTokens}>
               <SearchBox
                 id={'SuggestionSearchBox'}
                 placeholder={this.props.searchTitle}
@@ -104,14 +101,13 @@ private _searchContainerRef = React.createRef<HTMLDivElement>();
                 onSearch={newValue => this.onSearch(newValue)}
                 onChange={newSearchText => {
                   newSearchText && newSearchText.currentTarget.value.trim() !== '' ? this.showSuggestionCallOut() : this.hideSuggestionCallOut();
-                  this.setState({ searchText: (newSearchText && newSearchText.currentTarget.value) as string, value:"" });     
+                  this.setState({ searchText: (newSearchText && newSearchText.currentTarget.value) as string, value:"" });
+                  this.onSearchValueChanged(newSearchText,(newSearchText && newSearchText.currentTarget.value) as string);
                 }}
-              onClear={(ev:any)=>this.setState({ value:"", searchText:"", isSuggestionDisabled:true})}      
+              onClear={(ev:any)=>{this.setState({ value:"", searchText:"", isSuggestionDisabled:true}); this.onSearchValueChanged(ev,""); }}      
               value = {this.state.value}
               disableAnimation
               /> 
-              </Stack>      
-            </div>
         </div>
 
         )
@@ -119,6 +115,11 @@ private _searchContainerRef = React.createRef<HTMLDivElement>();
 
   private onSearch(enteredEntityValue: string) {
     this.props.searchCallback(enteredEntityValue.trim());
+  }
+
+  protected onSearchValueChanged(event?: React.ChangeEvent<HTMLInputElement> | undefined, newValue?: string | undefined) : void 
+  {
+    this.props.onChangeCallback(newValue || "")
   }
   private renderSuggestions = () => {
     return (

@@ -20,6 +20,7 @@ export interface IProps {
 	value:string;
   json:Array<ISuggestionItem>;
   onResult: (value:string) =>void;
+  onChange: (value?:string) => void;
   noSuggestionMessage:string;
   searchTitle:string;
 }
@@ -38,7 +39,7 @@ export class ReactSearchBoxV2 extends React.Component<IProps, IState> {
       this.state = {value:props.value, json:props.json};
       this.entitySelectHandler = this.entitySelectHandler.bind(this);
       this.searchTextandler = this.searchTextandler.bind(this);
- 
+      this.onChangeHandler = this.onChangeHandler.bind(this);
       //this._noSuggestionMessage = props.noSuggestionMessage;
       
 
@@ -62,6 +63,12 @@ export class ReactSearchBoxV2 extends React.Component<IProps, IState> {
   searchTextandler = (item: string): void => {
    this.setState({value: item as string});
   }
+
+  onChangeHandler = (item?: string): void => {
+      console.log("onchange triggered");
+    this.setState({value: item as string});
+    this.props.onChange(item);
+  }
   
   //Funciones para el favorito
   getSelectionDetails(): string {
@@ -82,6 +89,7 @@ export class ReactSearchBoxV2 extends React.Component<IProps, IState> {
             searchTitle={this.props.searchTitle}
             suggestionCallback={this.entitySelectHandler}
             searchCallback={this.searchTextandler}
+            onChangeCallback = {this.onChangeHandler}
             value = {this.state.value}
             noSuggestionsMessage = {this.props.noSuggestionMessage}
           />

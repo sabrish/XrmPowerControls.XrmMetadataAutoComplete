@@ -36,7 +36,7 @@ export class XrmMetadataAutoComplete implements ComponentFramework.StandardContr
 
 	private _autoCompleteValues: ISuggestionItem[];
 
-	private props:IProps = { value:"", json:[], onResult: this.notifyChange.bind(this),  noSuggestionMessage:this._noSuggestions, searchTitle: this._searchTitle };
+	private props:IProps = { value:"", json:[], onResult: this.notifyChange.bind(this), onChange:this.onChangeNotify.bind(this),  noSuggestionMessage:this._noSuggestions, searchTitle: this._searchTitle };
 
 	/**
 	 * Empty constructor.
@@ -89,6 +89,16 @@ export class XrmMetadataAutoComplete implements ComponentFramework.StandardContr
 
 	}
 
+	onChangeNotify(value?:string)
+	{
+		debugger;
+		if(value != undefined && value == "")
+		{
+			this._currentValue = value;
+		    this._notifyOutputChanged();
+		}
+	}
+
 
 
 	/**
@@ -107,9 +117,9 @@ export class XrmMetadataAutoComplete implements ComponentFramework.StandardContr
 
 		var namefield = "LogicalName";
 		var idField = "MetadataId";
-		if(metadataType != "Entity" && relatedEntityName != this.entity && relatedEntityName!=null)
+		if(metadataType != "Entity" && relatedEntityName != this.entity)
 		{
-			this.entity = relatedEntityName;
+			this.entity = relatedEntityName||"";
 			ReactDOM.unmountComponentAtNode(this._divContainer);
 			this.PopulateDropDown(metadataType,filterEntityFieldByEntitiesAssociatedTo,webApiUrl,namefield,idField,relatedEntityName);
 		}
@@ -185,9 +195,7 @@ export class XrmMetadataAutoComplete implements ComponentFramework.StandardContr
 					namefield = "LogicalName";
 					idField = "MetadataId";
 				}
-				else{
-					this._divContainer.innerHTML = "Please provide the field which records the entity name or enter the entity name in the RelatedEntity property";
-				}
+				
 
 				
 				break;
@@ -197,9 +205,6 @@ export class XrmMetadataAutoComplete implements ComponentFramework.StandardContr
 					webApiUrl = this.GetCustomerOrLookupAttributesforEntityUrl(relatedEntityName);
 					namefield = "LogicalName";
 					idField = "MetadataId";
-				}
-				else{
-					this._divContainer.innerHTML = "Please provide the field which records the entity name or enter the entity name in the RelatedEntity property";
 				}
 
 				
@@ -211,9 +216,7 @@ export class XrmMetadataAutoComplete implements ComponentFramework.StandardContr
 					namefield = "name";
 					idField = "savedqueryid";
 				}
-				else{
-					this._divContainer.innerHTML = "Please provide the field which records the entity name or enter the entity name in the RelatedEntity property";
-				}
+				
 				
 				break;
 			}
@@ -239,11 +242,22 @@ export class XrmMetadataAutoComplete implements ComponentFramework.StandardContr
 		
 		var results: ISuggestionItem[];
 		results = [];
-		var data = await this.getXrmMetaData(apiRequestUrl);
-		var dataJson = data.value;
-		if (metadataType === "Lookup"){
-			dataJson = data.Attributes;
+		var data:any;
+		var dataJson:any;
+		if(metadataType !="Entity" && (relatedEntityName == null || relatedEntityName == ""))
+		{
+			data = [];
+			dataJson = [];			
 		}
+		else
+		{
+			data = await this.getXrmMetaData(apiRequestUrl);
+			dataJson = data.value;
+		
+			if (metadataType === "Lookup"){
+				dataJson = data.Attributes;
+			}
+	    }
 
 		if (dataJson != null && dataJson.length > 0) {
 			for (let i = 0; i < dataJson.length; i++) {
