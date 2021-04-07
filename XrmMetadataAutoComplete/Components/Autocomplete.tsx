@@ -1,11 +1,12 @@
 import * as React from 'react';
-import { SearchBox, Callout, List } from 'office-ui-fabric-react/lib/';
+import { SearchBox, Callout, List, DirectionalHint, Stack, IStackTokens } from 'office-ui-fabric-react/lib/';
 import {
   CalloutStyle, AutocompleteStyles, SuggestionListStyle, 
   SuggestionListItemStyle
 } from './AutoComplete.style';
 import { FocusZone, FocusZoneDirection } from 'office-ui-fabric-react/lib/FocusZone';
 
+const stackTokens: Partial<IStackTokens> = { childrenGap: 20 };
 
 export interface IAutocompleteProps {
   items: ISuggestionItem[];
@@ -43,7 +44,7 @@ type ISearchSuggestionsProps = IAutocompleteProps;
 
 export class Autocomplete  extends React.Component<ISearchSuggestionsProps, IAutocompleteState> {
 
-private _menuButtonElement = React.createRef<HTMLDivElement>();
+private _searchContainerRef = React.createRef<HTMLDivElement>();
 
   constructor(props: ISearchSuggestionsProps) {
     super(props);
@@ -72,37 +73,45 @@ private _menuButtonElement = React.createRef<HTMLDivElement>();
     if(showHide) {
     return (
      
-      <div ref={this._menuButtonElement} style={AutocompleteStyles()} onKeyDown={this.onKeyDown}>
-        <SearchBox
-          id={'SuggestionSearchBox'}
-          placeholder={this.props.searchTitle}
-          onSearch={newValue => this.onSearch(newValue)}
-          onClick={newSearchText => { this.showSuggestionCallOut();}}
-          onChange={newSearchText => {
-            newSearchText && newSearchText.currentTarget.value.trim() !== '' ? this.showSuggestionCallOut() : this.hideSuggestionCallOut();
-            this.setState({ searchText: (newSearchText && newSearchText.currentTarget.value) as string });     
-          }}
-         onClear={(ev:any)=>this.setState({ value:"", isSuggestionDisabled:false})}
-        />
+      <div ref={this._searchContainerRef} style={AutocompleteStyles()} onKeyDown={this.onKeyDown}>
+        <Stack tokens={stackTokens}>
+          <SearchBox
+            id={'SuggestionSearchBox'}
+            placeholder={this.props.searchTitle}
+            onSearch={newValue => this.onSearch(newValue)}
+            onClick={newSearchText => { this.showSuggestionCallOut();}}
+            onChange={newSearchText => {
+              newSearchText && newSearchText.currentTarget.value.trim() !== '' ? this.showSuggestionCallOut() : this.hideSuggestionCallOut();
+              this.setState({ searchText: (newSearchText && newSearchText.currentTarget.value) as string });     
+            }}
+          onClear={(ev:any)=>this.setState({ value:"", searchText:"", isSuggestionDisabled:true})}
+          disableAnimation
+          />
+        </Stack>
         {this.renderSuggestions()}         
       </div>
     );
         }
         else
         return (
-          <div ref={this._menuButtonElement} style={AutocompleteStyles()} onKeyDown={this.onKeyDown}>
-          <SearchBox
-            id={'SuggestionSearchBox'}
-            placeholder={this.props.searchTitle}
-            onClick={newSearchText => { this.showSuggestionCallOut();}}
-            onSearch={newValue => this.onSearch(newValue)}
-            onChange={newSearchText => {
-              newSearchText && newSearchText.currentTarget.value.trim() !== '' ? this.showSuggestionCallOut() : this.hideSuggestionCallOut();
-              this.setState({ searchText: (newSearchText && newSearchText.currentTarget.value) as string, value:"" });     
-            }}
-           onClear={(ev:any)=>this.setState({ value:"", isSuggestionDisabled:false})}      
-           value = {this.state.value}
-           />       
+          <div ref={this._searchContainerRef} style={AutocompleteStyles()} onKeyDown={this.onKeyDown}>
+            <div ref={this._searchContainerRef}>
+            <Stack tokens={stackTokens}>
+              <SearchBox
+                id={'SuggestionSearchBox'}
+                placeholder={this.props.searchTitle}
+                onClick={newSearchText => { this.showSuggestionCallOut();}}
+                onSearch={newValue => this.onSearch(newValue)}
+                onChange={newSearchText => {
+                  newSearchText && newSearchText.currentTarget.value.trim() !== '' ? this.showSuggestionCallOut() : this.hideSuggestionCallOut();
+                  this.setState({ searchText: (newSearchText && newSearchText.currentTarget.value) as string, value:"" });     
+                }}
+              onClear={(ev:any)=>this.setState({ value:"", searchText:"", isSuggestionDisabled:true})}      
+              value = {this.state.value}
+              disableAnimation
+              /> 
+              </Stack>      
+            </div>
         </div>
 
         )
@@ -123,9 +132,10 @@ private _menuButtonElement = React.createRef<HTMLDivElement>();
         hidden={!this.state.isSuggestionDisabled}
         calloutMaxHeight={300}
         style={CalloutStyle()}
-        target={this._menuButtonElement.current}
-        directionalHint={5}
+        target={this._searchContainerRef.current}
+        directionalHint={DirectionalHint.bottomLeftEdge}
         isBeakVisible={false}
+        directionalHintFixed={true}
       >
         {this.renderSuggestionList()}
       </Callout >
@@ -135,12 +145,12 @@ private _menuButtonElement = React.createRef<HTMLDivElement>();
     if(this.state.searchText != undefined)
     {
       return (
-        <FocusZone direction={FocusZoneDirection.vertical}>
+        
           <List id='SearchList' tabIndex={0}
             items={this.suggestedTagsFiltered(this.props.items)}
             onRenderCell={this.onRenderCell}
           />
-        </FocusZone>
+        
       );
     }
   }
@@ -174,7 +184,6 @@ private _menuButtonElement = React.createRef<HTMLDivElement>();
     this.setState({ isSuggestionDisabled: false });
   }
   private suggestedTagsFiltered = (list: ISuggestionItem[]) => {
-    console.log("searchtext-"+this.state.searchText);
     let suggestedTags = list.filter(tag => this.state.searchText.toLowerCase() == "" ||
       tag.searchValue.toLowerCase().includes(this.state.searchText.toLowerCase()));
     suggestedTags = suggestedTags.sort((a, b) => a.searchValue.localeCompare(b.searchValue));

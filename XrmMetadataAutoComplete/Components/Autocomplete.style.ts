@@ -14,11 +14,7 @@ export const SuggestionListStyle = () => {
 export const SuggestionListItemStyle = mergeStyleSets({
   root: {
     selectors: {
-      '&:hover': {
-        //backgroundColor: DefaultColors.Item.ListItemHoverBackgroundColor
-      backgroundColor: "#f3f2f1",
-      color: "black"
-      },
+     
       '&:focus': {
         //backgroundColor: DefaultColors.Item.ListItemHoverBackgroundColor
       backgroundColor: "#f3f2f1",
