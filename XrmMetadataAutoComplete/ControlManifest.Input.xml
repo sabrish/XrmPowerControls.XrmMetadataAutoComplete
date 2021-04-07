@@ -1,16 +1,17 @@
-<?xml version="1.0" encoding="utf-8" ?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <manifest>
-  <control namespace="SAB.XrmPowerControls" constructor="XrmMetadataAutoComplete" version="0.0.1" display-name-key="XrmMetadataAutoComplete" description-key="XrmMetadataAutoComplete description" control-type="standard">
+  <control namespace="SAB.XrmPowerControls" constructor="XrmMetadataAutoComplete" version="0.0.3" display-name-key="XrmMetadataAutoComplete" description-key="XrmMetadataAutoComplete description" control-type="standard">
     <!-- property node identifies a specific, configurable piece of data that the control expects from CDS -->
-   <property name="selectedValue" display-name-key="Selected Vaue" description-key="Selected field Value" of-type="SingleLine.Text" usage="bound" required="true" />
+    <property name="selectedValue" display-name-key="Selected Vaue" description-key="Selected field Value" of-type="SingleLine.Text" usage="bound" required="true" />
     <property name="autoCompleteMetaDataType" display-name-key="AutoCompleteMetaDataType" description-key="AutoComplete MetaData Type" of-type="Enum" usage="input" required="true">
       <value name="Entity" display-name-key="Entity" description-key="Entity">Entity</value>
       <value name="Attributes" display-name-key="Attributes" description-key="Attributes" default="true">Attributes</value>
       <value name="Lookup" display-name-key="Lookup" description-key="Lookup">Lookup</value>
       <value name="SystemViews" display-name-key="SystemViews" description-key="SystemViews - Will have [ViewName]-{CRMID}-[View GUID] format to cope with views with same name">SystemViews</value>
+      <value name="BusissProcessFlows" display-name-key="BusissProcessFlows" description-key="Business Process Flows">BusinessProcessFlows</value>
     </property>
     <property name="filterEntityFieldByEntitiesAssociatedTo" display-name-key="Filter Entity Field By Entities Associated To" description-key="Only applies if the AutoCompleteMetaDataType is set to Entity. It will filter entity field auto complete list By entities associated to entity entered in this property" of-type="SingleLine.Text" usage="input" required="false" />
-    <property name="relatedEntity" display-name-key="Related Entity" description-key="Only applies if the AutoCompleteMetaDataType is set to anything other than Entity. It will filter the autocomplete list to contain only metatadata values related to this entity" of-type="SingleLine.Text" usage="input" required="true" />
+    <property name="relatedEntity" display-name-key="Related Entity" description-key="Only applies if the AutoCompleteMetaDataType is set to anything other than Entity. It will filter the autocomplete list to contain only metatadata values related to this entity" of-type="SingleLine.Text" usage="input" required="false" />
     <!-- 
       Property node's of-type attribute can be of-type-group attribute. 
       Example:
@@ -23,7 +24,7 @@
       <property name="sampleProperty" display-name-key="Property_Display_Key" description-key="Property_Desc_Key" of-type-group="numbers" usage="bound" required="true" />
     -->
     <resources>
-      <code path="index.ts" order="1"/>
+      <code path="index.ts" order="1" />
       <!-- UNCOMMENT TO ADD MORE RESOURCES
       <css path="css/XrmMetadataAutoComplete.css" order="1" />
       <resx path="strings/XrmMetadataAutoComplete.1033.resx" version="1.0.0" />
@@ -41,5 +42,9 @@
       <uses-feature name="WebAPI" required="true" />
     </feature-usage>
     -->
+    <feature-usage>
+      <uses-feature name="Utility" required="true" />
+      <uses-feature name="WebAPI" required="true" />
+    </feature-usage>
   </control>
 </manifest>
