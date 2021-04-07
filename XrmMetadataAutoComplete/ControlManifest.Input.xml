@@ -1,6 +1,6 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <manifest>
-  <control namespace="SAB.XrmPowerControls" constructor="XrmMetadataAutoComplete" version="0.0.2" display-name-key="XrmMetadataAutoComplete" description-key="XrmMetadataAutoComplete description" control-type="standard">
+  <control namespace="SAB.XrmPowerControls" constructor="XrmMetadataAutoComplete" version="0.0.3" display-name-key="XrmMetadataAutoComplete" description-key="XrmMetadataAutoComplete description" control-type="standard">
     <!-- property node identifies a specific, configurable piece of data that the control expects from CDS -->
     <property name="selectedValue" display-name-key="Selected Vaue" description-key="Selected field Value" of-type="SingleLine.Text" usage="bound" required="true" />
     <property name="autoCompleteMetaDataType" display-name-key="AutoCompleteMetaDataType" description-key="AutoComplete MetaData Type" of-type="Enum" usage="input" required="true">
@@ -43,8 +43,8 @@
     </feature-usage>
     -->
     <feature-usage>
-     <uses-feature name="Utility" required="true" />
-     <uses-feature name="WebAPI" required="true" />
+      <uses-feature name="Utility" required="true" />
+      <uses-feature name="WebAPI" required="true" />
     </feature-usage>
   </control>
 </manifest>
