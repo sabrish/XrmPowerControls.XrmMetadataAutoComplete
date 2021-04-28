@@ -117,7 +117,7 @@ export class XrmMetadataAutoComplete implements ComponentFramework.StandardContr
 
 		var namefield = "LogicalName";
 		var idField = "MetadataId";
-		if(metadataType != "Entity" && relatedEntityName != this.entity)
+		if((metadataType != "Entity" && relatedEntityName != this.entity) || (metadataType == "Entity" && (filterEntityFieldByEntitiesAssociatedTo != undefined || filterEntityFieldByEntitiesAssociatedTo != null)))
 		{
 			this.entity = relatedEntityName||"";
 			ReactDOM.unmountComponentAtNode(this._divContainer);
@@ -163,7 +163,7 @@ export class XrmMetadataAutoComplete implements ComponentFramework.StandardContr
 		//First sort the array and then run through it and then see if the next (or previous) index is the same as the current. 
 		const sortedArr = data.slice().sort();
 		for (var i = 0; i < data.length - 1; i++) {
-			if (sortedArr[i] === stringToSearch) {
+			if (sortedArr[i].searchValue === stringToSearch) {
 				return true;
 			}
 		}
@@ -272,7 +272,7 @@ export class XrmMetadataAutoComplete implements ComponentFramework.StandardContr
 					}
 					else
 					{
-						if(dataJson[i]["DisplayName"]["LocalizedLabels"].length>0)
+						if(dataJson[i]["DisplayName"]!=undefined && dataJson[i]["DisplayName"].length>0 && dataJson[i]["DisplayName"]["LocalizedLabels"].length>0)
 						{
 							results.push({ key: i, displayValue: dataJson[i]["DisplayName"]["LocalizedLabels"][0]["Label"]+" ("+dataJson[i][namefield]+")",searchValue:dataJson[i][namefield] });
 						}
