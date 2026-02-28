@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(npm:*)",
+      "Bash(rm:*)",
+      "Bash(python3:*)",
+      "Bash(node:*)",
+      "Bash(xargs:*)",
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "Bash(grep -o '\"react[^\"]*\":\\\\s*\"[^\"]*\"' /c/Users/sabrish/Github/XrmPowerControls.XrmMetadataAutoComplete/node_modules/pcf-scripts/webpack.config.js 2>/dev/null | head -20\ngrep -rl 'externals\\\\|Reactv18' /c/Users/sabrish/Github/XrmPowerControls.XrmMetadataAutoComplete/node_modules/pcf-scripts/ 2>/dev/null | grep -v 'node_modules/pcf-scripts/node_modules' | head -10)"
+    ]
+  }
+}
