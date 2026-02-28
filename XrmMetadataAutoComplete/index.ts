@@ -344,10 +344,7 @@ export class XrmMetadataAutoComplete implements ComponentFramework.StandardContr
 	}
 
 	private async getXrmMetaData(webApiUrl: string, signal: AbortSignal): Promise<any> {
-		// Prefix with the org URL so the request resolves correctly in all PCF
-		// host environments, not just those where the iframe shares the org origin.
-		const absoluteUrl = this._context.page.getClientUrl() + webApiUrl;
-		const response = await fetch(absoluteUrl, {
+		const response = await fetch(webApiUrl, {
 			headers: {
 				"OData-MaxVersion": "4.0",
 				"OData-Version": "4.0",
