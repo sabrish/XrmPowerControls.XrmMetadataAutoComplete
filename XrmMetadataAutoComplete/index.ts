@@ -1,348 +1,387 @@
 import * as React from "react";
-import * as ReactDOM from "react-dom";
-import { ITag } from 'office-ui-fabric-react/lib/Pickers';
-import {IInputs, IOutputs} from "./generated/ManifestTypes";
-import { ReactSearchBoxV2, IProps } from './Components/ReactSearchBox';
-import { ISuggestionItem } from './Components/Autocomplete';
-
+import type { Root } from 'react-dom/client';
+import * as ReactDOM from 'react-dom';
+import { FluentProvider, webLightTheme } from '@fluentui/react-components';
+import { IInputs, IOutputs } from "./generated/ManifestTypes";
+import { MetadataSearchBox, ISuggestionItem, IProps } from './Components/MetadataSearchBox';
 
 export class XrmMetadataAutoComplete implements ComponentFramework.StandardControl<IInputs, IOutputs> {
 
-	entity:string="";
-	private firstRun:Boolean =true;
+	private readonly API_VERSION = "v9.2";
+
 	/**
-     * Selected items cache.
-     */
-	 public selectedItems: ITag[];
+	 * Snapshot of the configuration key used for the last data fetch.
+	 * Format: "<metadataType>|<relatedEntity>|<filterEntity>|<outputMode>"
+	 * When this changes between updateView calls, PopulateDropDown is re-triggered.
+	 *
+	 * Note: relatedEntity may be bound to the selectedValue output of another
+	 * XrmMetadataAutoComplete control on the same form. The configKey naturally
+	 * captures any change to that value, ensuring a reload when the upstream
+	 * control makes a selection.
+	 */
+	private _loadedConfig: string = "";
 
-	
-	//private _labelElement : HTMLLabelElement;
-	private _divContainer : HTMLDivElement;
-
-	// Reference to ComponentFramework Context object
+	private _root: Root | null = null;
+	private _divContainer: HTMLDivElement;
 	private _context: ComponentFramework.Context<IInputs>;
-
-	private _currentValue : string;
-
-	private _json:string|null;
-	private _noSuggestions: string = "No data";
-	private _searchTitle ="---";
-
-	 // PCF framework delegate which will be assigned to this object which would be called whenever any update happens. 
 	private _notifyOutputChanged: () => void;
+	private _currentValue: string = "";
+	private _autoCompleteValues: ISuggestionItem[] = [];
 
-	// Event Handler 'refreshData' reference
-	private _refreshData: EventListenerOrEventListenerObject;
-
-	private _autoCompleteValues: ISuggestionItem[];
-
-	private props:IProps = { value:"", json:[], onResult: this.notifyChange.bind(this), onChange:this.onChangeNotify.bind(this),  noSuggestionMessage:this._noSuggestions, searchTitle: this._searchTitle };
-
-	/**
-	 * Empty constructor.
-	 */
-	constructor()
-	{
-
-	}
+	/** Persisted loading/error state — prevents updateView re-renders from killing the spinner. */
+	private _isLoading: boolean = false;
+	private _errorMessage: string | null = null;
 
 	/**
-	 * Used to initialize the control instance. Controls can kick off remote server calls and other initialization actions here.
-	 * Data-set values are not initialized here, use updateView.
-	 * @param context The entire property bag available to control via Context Object; It contains values as set up by the customizer mapped to property names defined in the manifest, as well as utility functions.
-	 * @param notifyOutputChanged A callback method to alert the framework that the control has new outputs ready to be retrieved asynchronously.
-	 * @param state A piece of data that persists in one session for a single user. Can be set at any point in a controls life cycle by calling 'setControlState' in the Mode interface.
-	 * @param container If a control is marked control-type='standard', it will receive an empty div element within which it can render its content.
+	 * True when the control requires a relatedEntity that has not been configured.
+	 * Shown as a distinct hint rather than the generic "no results" message.
 	 */
-	public init(context: ComponentFramework.Context<IInputs>, notifyOutputChanged: () => void, state: ComponentFramework.Dictionary, container:HTMLDivElement)
-	{
-		// Add control initialization code
-		// Add control initialization code
+	private _isUnconfigured: boolean = false;
 
-		this._context = context;
-		this._divContainer = document.createElement("div");
-		this._notifyOutputChanged = notifyOutputChanged;
-		var metadataType = this._context.parameters.autoCompleteMetaDataType.raw;
-		this.props.value = this._context.parameters.selectedValue.raw || "";
-		var relatedEntityName =  this._context.parameters.relatedEntity === undefined ? null : this._context.parameters.relatedEntity.raw;
+	/** AbortController for the in-flight fetch — aborted when a newer request starts. */
+	private _fetchAbortController: AbortController | null = null;
 
-		var filterEntityFieldByEntitiesAssociatedTo = this._context.parameters.filterEntityFieldByEntitiesAssociatedTo === undefined ? null : this._context.parameters.filterEntityFieldByEntitiesAssociatedTo.raw;
-
-		var webApiUrl = "/api/data/v9.0/EntityDefinitions";
-
-		var namefield = "LogicalName";
-		var idField = "MetadataId";
-       
-		if(metadataType == "Entity" && this.firstRun)
-		{
-			this.firstRun == false;
-			this.PopulateDropDown(metadataType,filterEntityFieldByEntitiesAssociatedTo,webApiUrl,namefield,idField,relatedEntityName);
-		}
-		
-		container.appendChild(this._divContainer);
-	}
-
-	notifyChange(value:string)
-	{
+	// Stable callback references — bound once so React never sees new function
+	// instances on re-render.
+	private readonly _onSelect = (value: string): void => {
+		// The component always passes outputValue (already formatted per outputMode).
 		this._currentValue = value;
 		this._notifyOutputChanged();
+	};
 
+	// Only propagates an explicit clear (empty string) back to the bound field.
+	private readonly _onInputChange = (value?: string): void => {
+		if (value === "") {
+			this._currentValue = "";
+			this._notifyOutputChanged();
+		}
+	};
+
+	private readonly _onRetry = (): void => {
+		// Re-run the last data load without resetting _loadedConfig so that a
+		// simultaneous updateView in the else-branch doesn't suppress the reload.
+		this._triggerDataLoad();
+	};
+
+	constructor() { /* intentionally empty */ }
+
+	public init(
+		context: ComponentFramework.Context<IInputs>,
+		notifyOutputChanged: () => void,
+		_state: ComponentFramework.Dictionary,
+		container: HTMLDivElement,
+	): void {
+		this._context = context;
+		this._notifyOutputChanged = notifyOutputChanged;
+
+		this._divContainer = document.createElement("div");
+		container.appendChild(this._divContainer);
+
+		this._root = (ReactDOM as any).createRoot(this._divContainer) as Root;
+
+		// Render the initial empty state immediately. The first updateView call
+		// (which the framework always issues after init) will trigger data loading.
+		this._render();
 	}
 
-	onChangeNotify(value?:string)
-	{
-		debugger;
-		if(value != undefined && value == "")
-		{
-			this._currentValue = value;
-		    this._notifyOutputChanged();
+	public updateView(context: ComponentFramework.Context<IInputs>): void {
+		// Always refresh context so theme changes and property updates are picked up.
+		// This includes changes driven by another control's output being bound to
+		// this control's relatedEntity input.
+		this._context = context;
+
+		const configKey = this._buildConfigKey();
+		if (configKey !== this._loadedConfig) {
+			// Configuration changed — record the new key and fetch fresh data.
+			this._loadedConfig = configKey;
+			this._triggerDataLoad();
+		} else {
+			// Config unchanged — re-render in place to propagate value or theme
+			// changes (e.g. bound field reset, high-contrast toggle, disabled state).
+			this._render();
 		}
 	}
 
+	public getOutputs(): IOutputs {
+		return { selectedValue: this._currentValue };
+	}
 
+	public destroy(): void {
+		this._fetchAbortController?.abort();
+		this._root?.unmount();
+		this._root = null;
+	}
+
+	// ---------------------------------------------------------------------------
+	// Private helpers
+	// ---------------------------------------------------------------------------
+
+	private _getRelatedEntityParam(): string | null {
+		const p = this._context.parameters.relatedEntity;
+		return p === undefined ? null : p.raw;
+	}
+
+	private _getFilterEntityParam(): string | null {
+		const p = this._context.parameters.filterEntityFieldByEntitiesAssociatedTo;
+		return p === undefined ? null : p.raw;
+	}
+
+	private _getNoSuggestionsMessage(): string {
+		return this._context.parameters.noSuggestionsMessage?.raw || "No results found";
+	}
+
+	private _getSearchPlaceholder(): string {
+		return this._context.parameters.searchPlaceholder?.raw || "Search...";
+	}
 
 	/**
-	 * Called when any value in the property bag has changed. This includes field values, data-sets, global values such as container height and width, offline status, control metadata values such as label, visible, etc.
-	 * @param context The entire property bag available to control via Context Object; It contains values as set up by the customizer mapped to names defined in the manifest, as well as utility functions
+	 * Returns "LogicalName" or "DisplayValue".
+	 * LogicalName is the default and is required when this control's output is
+	 * bound to another control's relatedEntity input (cascading scenario).
 	 */
-	public updateView(context: ComponentFramework.Context<IInputs>): void
-	{
-		var metadataType = this._context.parameters.autoCompleteMetaDataType.raw;
-		this.props.value = this._context.parameters.selectedValue.raw || "";
-		var relatedEntityName =  this._context.parameters.relatedEntity === undefined ? null : this._context.parameters.relatedEntity.raw;
-
-		var filterEntityFieldByEntitiesAssociatedTo = this._context.parameters.filterEntityFieldByEntitiesAssociatedTo === undefined ? null : this._context.parameters.filterEntityFieldByEntitiesAssociatedTo.raw;
-
-		var webApiUrl = "/api/data/v9.0/EntityDefinitions";
-
-		var namefield = "LogicalName";
-		var idField = "MetadataId";
-		if((metadataType != "Entity" && relatedEntityName != this.entity) || (metadataType == "Entity" && (filterEntityFieldByEntitiesAssociatedTo != undefined || filterEntityFieldByEntitiesAssociatedTo != null)))
-		{
-			this.entity = relatedEntityName||"";
-			ReactDOM.unmountComponentAtNode(this._divContainer);
-			this.PopulateDropDown(metadataType,filterEntityFieldByEntitiesAssociatedTo,webApiUrl,namefield,idField,relatedEntityName);
-		}
+	private _getOutputMode(): string {
+		const p = this._context.parameters.outputMode;
+		return (p === undefined ? null : p.raw) || "LogicalName";
 	}
 
-	/** 
-	 * It is called by the framework prior to a control receiving new data. 
-	 * @returns an object based on nomenclature defined in manifest, expecting object[s] for property marked as “bound” or “output”
+	/**
+	 * Builds a string key that uniquely identifies the current data-loading
+	 * configuration. When this key differs from _loadedConfig, a new fetch is needed.
+	 * Includes outputMode so changing the mode rebuilds the list with correct outputValues.
 	 */
-	public getOutputs(): IOutputs
-	{
-		let result = {
-            selectedValue: this._currentValue
+	private _buildConfigKey(): string {
+		const metadataType = this._context.parameters.autoCompleteMetaDataType.raw;
+		const relatedEntity = this._getRelatedEntityParam() ?? "";
+		const filterEntity = this._getFilterEntityParam() ?? "";
+		const outputMode = this._getOutputMode();
+		return `${metadataType}|${relatedEntity}|${filterEntity}|${outputMode}`;
+	}
+
+	private _triggerDataLoad(): void {
+		const metadataType = this._context.parameters.autoCompleteMetaDataType.raw;
+		const relatedEntity = this._getRelatedEntityParam();
+		const filterEntity = this._getFilterEntityParam();
+		this.PopulateDropDown(metadataType, filterEntity, relatedEntity);
+	}
+
+	/** Builds props from current class state and calls _root.render(). */
+	private _render(): void {
+		const props: IProps = {
+			value: this._context.parameters.selectedValue.raw || "",
+			json: this._autoCompleteValues,
+			onSelect: this._onSelect,
+			onInputChange: this._onInputChange,
+			onRetry: this._onRetry,
+			noSuggestionMessage: this._getNoSuggestionsMessage(),
+			searchTitle: this._getSearchPlaceholder(),
+			isLoading: this._isLoading,
+			errorMessage: this._errorMessage,
+			isUnconfigured: this._isUnconfigured,
+			disabled: this._context.mode.isControlDisabled,
 		};
-		
-		return result;
-	}
-
-	/** 
-	 * Called when the control is to be removed from the DOM tree. Controls should use this call for cleanup.
-	 * i.e. cancelling any pending remote calls, removing listeners, etc.
-	 */
-	public destroy(): void
-	{
-		// Add code to cleanup control if necessary
-		ReactDOM.unmountComponentAtNode(this._divContainer);
-	}
-
-	/** 
-	 	* method to gnenerate unique ids in javassript so that I can have multiple PCF controls on the same form
-		* https://stackoverflow.com/questions/105034/create-guid-uuid-in-javascript
-	*/
-	private uuidv4():string {
-		//@ts-ignore
-		return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
-			(c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
+		this._root?.render(
+			React.createElement(
+				FluentProvider,
+				{ theme: this._context.fluentDesignLanguage?.tokenTheme ?? webLightTheme },
+				React.createElement(MetadataSearchBox, props),
+			),
 		);
 	}
 
-	private ExistsinArray(data: Array<any>, stringToSearch: string) {
-		//First sort the array and then run through it and then see if the next (or previous) index is the same as the current. 
-		const sortedArr = data.slice().sort();
-		for (var i = 0; i < data.length - 1; i++) {
-			if (sortedArr[i].searchValue === stringToSearch) {
-				return true;
-			}
-		}
-		return false;
-	}
+	// ---------------------------------------------------------------------------
+	// Data loading
+	// ---------------------------------------------------------------------------
 
-	private async PopulateDropDown(metadataType:string,filterEntityFieldByEntitiesAssociatedTo:any,webApiUrl:string,namefield:string,idField:string,relatedEntityName:any)
-	{
-		switch(metadataType){
-			case "Entity":{
-				if (filterEntityFieldByEntitiesAssociatedTo == undefined || filterEntityFieldByEntitiesAssociatedTo == null)
-				{
-					webApiUrl = this.GetEntitiesUrl();
-					namefield = "LogicalName";
-					idField = "MetadataId";
-				}
-				else{
-					webApiUrl = this.GetOneToManyRelationshipMetadataWithParamsUrl(String(filterEntityFieldByEntitiesAssociatedTo), "$select=ReferencingEntity,MetadataId");
-					namefield = "ReferencingEntity";
-					idField = "MetadataId";
-				}
+	private async PopulateDropDown(
+		metadataType: string,
+		filterEntityFieldByEntitiesAssociatedTo: string | null,
+		relatedEntityName: string | null,
+	): Promise<void> {
+		// Abort any in-flight request before issuing a new one.
+		this._fetchAbortController?.abort();
+		const controller = new AbortController();
+		this._fetchAbortController = controller;
 
-				
-				break;
-			}
-			case "Attributes":{
-				if (relatedEntityName != null){
+		this._isUnconfigured = false;
+		this._isLoading = true;
+		this._errorMessage = null;
+		this._render();
+
+		try {
+			let webApiUrl: string;
+			let namefield: string;
+			let idField: string;
+
+			switch (metadataType) {
+				case "Entity":
+					if (!filterEntityFieldByEntitiesAssociatedTo) {
+						webApiUrl = this.GetEntitiesUrl();
+						namefield = "LogicalName";
+						idField = "MetadataId";
+					} else {
+						webApiUrl = this.GetOneToManyRelationshipsUrl(filterEntityFieldByEntitiesAssociatedTo);
+						namefield = "ReferencingEntity";
+						idField = "MetadataId";
+					}
+					break;
+				case "Attributes":
+					if (!relatedEntityName) {
+						this._isLoading = false;
+						this._isUnconfigured = true;
+						this._autoCompleteValues = [];
+						this._render();
+						return;
+					}
 					webApiUrl = this.GetAttributesforEntityUrl(relatedEntityName);
 					namefield = "LogicalName";
 					idField = "MetadataId";
-				}
-				
-
-				
-				break;
-			}
-			case "Lookup":{
-				if (relatedEntityName != null){
+					break;
+				case "Lookup":
+					if (!relatedEntityName) {
+						this._isLoading = false;
+						this._isUnconfigured = true;
+						this._autoCompleteValues = [];
+						this._render();
+						return;
+					}
 					webApiUrl = this.GetCustomerOrLookupAttributesforEntityUrl(relatedEntityName);
 					namefield = "LogicalName";
 					idField = "MetadataId";
-				}
-
-				
-				break;
-			}
-			case "SystemViews":{
-				if (relatedEntityName != null){
+					break;
+				case "SystemViews":
+					if (!relatedEntityName) {
+						this._isLoading = false;
+						this._isUnconfigured = true;
+						this._autoCompleteValues = [];
+						this._render();
+						return;
+					}
 					webApiUrl = this.GetSavedViewsForEntityUrl(relatedEntityName);
 					namefield = "name";
 					idField = "savedqueryid";
-				}
-				
-				
-				break;
-			}
-			case "BusinessProcessFlows":{
-				if (relatedEntityName != null){
+					break;
+				case "BusinessProcessFlows":
+					if (!relatedEntityName) {
+						this._isLoading = false;
+						this._isUnconfigured = true;
+						this._autoCompleteValues = [];
+						this._render();
+						return;
+					}
 					webApiUrl = this.GetBusinessProcessFlowsUrl(relatedEntityName);
-					namefield="name";
-					idField="workflowid";
+					namefield = "name";
+					idField = "workflowid";
+					break;
+				default:
+					this._isLoading = false;
+					this._errorMessage = `Unsupported metadata type: "${metadataType}"`;
+					this._render();
+					return;
+			}
+
+			const data = await this.getXrmMetaData(webApiUrl, controller.signal);
+
+			// If this request was superseded by a newer one, discard the result.
+			if (controller.signal.aborted) return;
+
+			const dataJson: any[] = metadataType === "Lookup" ? (data.Attributes ?? []) : (data.value ?? []);
+			const outputMode = this._getOutputMode();
+
+			const seen = new Set<string>();
+			const results: ISuggestionItem[] = [];
+
+			for (const record of dataJson) {
+				const itemKey = record[namefield] as string;
+				if (!itemKey || seen.has(itemKey)) continue;
+				seen.add(itemKey);
+
+				if (metadataType === "SystemViews") {
+					const searchVal = `${record[namefield]}-CRMID-${record[idField]}`;
+					results.push({
+						displayValue: `${record[namefield]} (${record[idField]})`,
+						searchValue: searchVal,
+						outputValue: searchVal, // fixed format; outputMode does not apply
+					});
+				} else if (metadataType === "BusinessProcessFlows") {
+					results.push({
+						displayValue: record[namefield],
+						searchValue: record[namefield],
+						outputValue: record[namefield], // outputMode does not apply
+					});
+				} else {
+					const displayLabel: string | undefined =
+						record["DisplayName"]?.UserLocalizedLabel?.Label ??
+						record["DisplayName"]?.LocalizedLabels?.[0]?.Label;
+					const displayValue = displayLabel ? `${displayLabel} (${itemKey})` : itemKey;
+					// outputMode controls what is written to the bound field:
+					//   LogicalName  → itemKey (e.g. "account") — use this when chaining controls
+					//   DisplayValue → displayValue (e.g. "Account (account)")
+					const outputValue = outputMode === "DisplayValue" ? displayValue : itemKey;
+					results.push({ displayValue, searchValue: itemKey, outputValue });
 				}
-				
-				break;
-			}
-			default:{
-				this._divContainer.innerHTML = "Undefined metadatatype";
-				break;
 			}
 
+			this._autoCompleteValues = results;
+			this._isLoading = false;
+			this._errorMessage = null;
+
+			// If the currently saved value is no longer in the new list, clear it.
+			// Compare against outputValue because that is what was written to the field.
+			const currentValue = this._context.parameters.selectedValue.raw || "";
+			const valueStillValid = results.some((r) => r.outputValue === currentValue);
+			if (!valueStillValid && currentValue !== "") {
+				this._currentValue = "";
+				this._notifyOutputChanged();
+			}
+
+			this._render();
+
+		} catch (err) {
+			if (controller.signal.aborted) return;
+			this._isLoading = false;
+			this._errorMessage = err instanceof Error ? err.message : "Failed to load metadata";
+			this._render();
 		}
+	}
 
-		//@ts-ignore
-		const serverUrl = Xrm.Page.context.getClientUrl();
-		var apiRequestUrl = serverUrl + webApiUrl;
-		
-		var results: ISuggestionItem[];
-		results = [];
-		var data:any;
-		var dataJson:any;
-		if(metadataType !="Entity" && (relatedEntityName == null || relatedEntityName == ""))
-		{
-			data = [];
-			dataJson = [];			
-		}
-		else
-		{
-			data = await this.getXrmMetaData(apiRequestUrl);
-			dataJson = data.value;
-		
-			if (metadataType === "Lookup"){
-				dataJson = data.Attributes;
-			}
-	    }
-
-		if (dataJson != null && dataJson.length > 0) {
-			for (let i = 0; i < dataJson.length; i++) {
-				
-				if (!this.ExistsinArray(results, dataJson[i][namefield])){
-					if (metadataType  == "SystemViews"){
-						results.push({ key: i, displayValue: dataJson[i][namefield] + " (" + dataJson[i][idField]+")",searchValue:dataJson[i][namefield] + "-CRMID-" + dataJson[i][idField] });
-					}
-					else if(metadataType  == "BusinessProcessFlows")
-					{
-						results.push({ key: i, displayValue: dataJson[i][namefield],searchValue:dataJson[i][namefield] });
-					}
-					else
-					{
-						if(dataJson[i]["DisplayName"]!=undefined && dataJson[i]["DisplayName"].length>0 && dataJson[i]["DisplayName"]["LocalizedLabels"].length>0)
-						{
-							results.push({ key: i, displayValue: dataJson[i]["DisplayName"]["LocalizedLabels"][0]["Label"]+" ("+dataJson[i][namefield]+")",searchValue:dataJson[i][namefield] });
-						}
-						else
-						{
-							results.push({ key: i, displayValue: dataJson[i][namefield],searchValue:dataJson[i][namefield] });
-						}
-					}
-				}
-				
-			}
-		}
-
-		this._autoCompleteValues = results.sort((a, b) => (a.key > b.key) ? 1 : -1);
-		this.props.json = this._autoCompleteValues;
-		let obj = this.props.json.find((o, i) => {
-			if (o.searchValue === this.props.value) {
-				return true; // stop searching
-			}
+	private async getXrmMetaData(webApiUrl: string, signal: AbortSignal): Promise<any> {
+		const response = await fetch(webApiUrl, {
+			headers: {
+				"OData-MaxVersion": "4.0",
+				"OData-Version": "4.0",
+				"Accept": "application/json",
+			},
+			signal,
 		});
-
-		if(!obj)
-		{
-			this.props.value = "";
+		if (!response.ok) {
+			throw new Error(`Metadata fetch failed: ${response.status} ${response.statusText}`);
 		}
-
-		ReactDOM.render(
-			React.createElement(ReactSearchBoxV2,this.props)
-			, this._divContainer
-		);			
+		return response.json();
 	}
 
-	private async getXrmMetaData(webApiUrl:string):Promise<any> {
-		const response = await fetch(webApiUrl);
-		const body = await response.json();
-  		return body;
-		
+	private GetEntitiesUrl(): string {
+		return `/api/data/${this.API_VERSION}/EntityDefinitions?$select=LogicalName,DisplayName,MetadataId`;
 	}
 
-	
-
-	private GetEntitiesUrl() :string
-	{
-		return "/api/data/v9.0/EntityDefinitions";
+	private GetSavedViewsForEntityUrl(entitylogicalname: string): string {
+		// querytype eq 0 = saved query (system views); $top=5000 avoids the default 50-row page limit.
+		return `/api/data/${this.API_VERSION}/savedqueries?$filter=returnedtypecode eq '${entitylogicalname}' and querytype eq 0&$select=name,savedqueryid&$orderby=name asc&$top=5000`;
 	}
 
-	private GetSavedViewsForEntityUrl(entitylogicalname: string) :string
-	{
-		return "/api/data/v9.0/savedqueries?$filter=returnedtypecode eq '" + entitylogicalname + "'";
+	private GetCustomerOrLookupAttributesforEntityUrl(entitylogicalname: string): string {
+		return `/api/data/${this.API_VERSION}/EntityDefinitions(LogicalName='${entitylogicalname}')?$expand=Attributes($filter=AttributeType eq Microsoft.Dynamics.CRM.AttributeTypeCode'Lookup' or AttributeType eq Microsoft.Dynamics.CRM.AttributeTypeCode'Customer';$select=LogicalName,DisplayName,MetadataId,AttributeType)`;
 	}
 
-	private GetCustomerOrLookupAttributesforEntityUrl(entitylogicalname: string) :string
-	{
-		 return "/api/data/v9.0/EntityDefinitions(LogicalName='" +
-			entitylogicalname +
-			"')?$expand=Attributes($filter=AttributeType eq Microsoft.Dynamics.CRM.AttributeTypeCode'Lookup' or AttributeType eq Microsoft.Dynamics.CRM.AttributeTypeCode'Customer')";
+	private GetAttributesforEntityUrl(entitylogicalname: string): string {
+		return `/api/data/${this.API_VERSION}/EntityDefinitions(LogicalName='${entitylogicalname}')/Attributes?$select=LogicalName,DisplayName,MetadataId,AttributeType`;
 	}
 
-	private GetAttributesforEntityUrl(entitylogicalname: string): string
-	{
-		return "/api/data/v9.0/EntityDefinitions(LogicalName='" + entitylogicalname + "')/Attributes";
+	private GetOneToManyRelationshipsUrl(entitylogicalname: string): string {
+		return `/api/data/${this.API_VERSION}/EntityDefinitions(LogicalName='${entitylogicalname}')/OneToManyRelationships?$select=ReferencingEntity,MetadataId`;
 	}
 
-	private  GetOneToManyRelationshipMetadataWithParamsUrl(entitylogicalname: string, paramstring: string ) :string
-	{
-		return "/api/data/v9.0/EntityDefinitions(LogicalName='" + entitylogicalname + "')/OneToManyRelationships?" + paramstring;
-	}
-
-	private GetBusinessProcessFlowsUrl(entitylogicalname: string): string
-	{
-		return "/api/data/v9.0/workflows?$filter=category eq 4 and primaryentity eq '"+entitylogicalname+"'";
+	private GetBusinessProcessFlowsUrl(entitylogicalname: string): string {
+		// $top=5000 avoids the default 50-row page limit on the workflows entity endpoint.
+		return `/api/data/${this.API_VERSION}/workflows?$filter=category eq 4 and primaryentity eq '${entitylogicalname}'&$select=name,workflowid&$orderby=name asc&$top=5000`;
 	}
 }
