@@ -12,3 +12,6 @@
 # msbuild output directories
 /bin
 /obj
+
+# Claude Code local settings (machine-specific tool permissions)
+.claude/
