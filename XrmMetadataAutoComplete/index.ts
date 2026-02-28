@@ -1,6 +1,5 @@
 import * as React from "react";
-import type { Root } from 'react-dom/client';
-import * as ReactDOM from 'react-dom';
+import { createRoot, type Root } from 'react-dom/client';
 import { FluentProvider, webLightTheme } from '@fluentui/react-components';
 import { IInputs, IOutputs } from "./generated/ManifestTypes";
 import { MetadataSearchBox, ISuggestionItem, IProps } from './Components/MetadataSearchBox';
@@ -77,7 +76,7 @@ export class XrmMetadataAutoComplete implements ComponentFramework.StandardContr
 		this._divContainer = document.createElement("div");
 		container.appendChild(this._divContainer);
 
-		this._root = (ReactDOM as any).createRoot(this._divContainer) as Root;
+		this._root = createRoot(this._divContainer);
 
 		// Render the initial empty state immediately. The first updateView call
 		// (which the framework always issues after init) will trigger data loading.
@@ -345,7 +344,10 @@ export class XrmMetadataAutoComplete implements ComponentFramework.StandardContr
 	}
 
 	private async getXrmMetaData(webApiUrl: string, signal: AbortSignal): Promise<any> {
-		const response = await fetch(webApiUrl, {
+		// Prefix with the org URL so the request resolves correctly in all PCF
+		// host environments, not just those where the iframe shares the org origin.
+		const absoluteUrl = this._context.page.getClientUrl() + webApiUrl;
+		const response = await fetch(absoluteUrl, {
 			headers: {
 				"OData-MaxVersion": "4.0",
 				"OData-Version": "4.0",
